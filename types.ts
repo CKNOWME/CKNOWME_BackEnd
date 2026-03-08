@@ -8,6 +8,7 @@ export type Certificate = {
   date: number;
   pdfUrl: string;
   verifyUrl: string;
+  photo:string;
   category: string;
 };
 
@@ -17,6 +18,7 @@ export type User = {
   name: string;
   email: string;
   password: string;
+  photo:string;
   certs: string[];
   intentos: number;
 };

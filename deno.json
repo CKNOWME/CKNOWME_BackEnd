@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-env --allow-sys --allow-read --watch server.ts"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1",
+    "bcryptjs": "npm:bcryptjs@^3.0.3",
+    "cookie-parser": "npm:cookie-parser@^1.4.7",
+    "dotenv": "npm:dotenv@^17.3.1",
+    "express": "npm:express@^5.2.1",
+    "express-rate-limit": "npm:express-rate-limit@^8.3.0",
+    "helmet": "npm:helmet@^8.1.0",
+    "jose": "npm:jose@^6.2.0",
+    "mongoose": "npm:mongoose@^9.2.4"
+  }
+}

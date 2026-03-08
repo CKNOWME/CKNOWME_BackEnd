@@ -17,6 +17,7 @@ router.post("/add", async (req: Request, res: Response) => {
             issuer: req.body.issuer,
             description: req.body.description || "null",
             date: req.body.date,
+            photo:req.body.photo || "null",
             pdfUrl: req.body.pdfUrl || "null",
             verifyUrl: req.body.verifyUrl || "null",
             category: req.body.category || "General",
@@ -61,6 +62,7 @@ router.put("id/:id", async (req: Request, res: Response) => {
         cert.issuer = req.body.issuer || cert.issuer;
         cert.description = req.body.description || cert.description;
         cert.date = req.body.date || cert.date;
+        cert.photo = req.body.photo || cert.photo;
         cert.pdfUrl = req.body.pdfUrl || cert.pdfUrl;
         cert.verifyUrl = req.body.verifyUrl || cert.verifyUrl;
         cert.category = req.body.category || cert.category;

@@ -8,6 +8,7 @@ export const certSchema = new mongoose.Schema({
   date: { type: Number, required: true },
   pdfUrl: { type: String, required: true },
   verifyUrl: { type: String, required: true },
+  photo:{ type: String, required: true },
   category: { type: String, required: true },
 });
 

@@ -41,7 +41,7 @@ router.post("/add", async (req: Request, res: Response) => {
     }
 });
 
-router.put("id/:id", async (req: Request, res: Response) => {
+router.put("/id/:id", async (req: Request, res: Response) => {
     try {
         const checkAuth = await getuserJWT(req.cookies.bearer);
         if(checkAuth == "error"){
@@ -73,7 +73,7 @@ router.put("id/:id", async (req: Request, res: Response) => {
     }
 });
 
-router.get("id/:id", async (req: Request, res: Response) => {
+router.get("/id/:id", async (req: Request, res: Response) => {
     try {
         const cert = await Cert.findOne({id:req.params.id}).select("-__v -_id");
         if(!cert){
@@ -85,7 +85,7 @@ router.get("id/:id", async (req: Request, res: Response) => {
     }
 });
 
-router.delete("id/:id", async (req: Request, res: Response) => {
+router.delete("/id/:id", async (req: Request, res: Response) => {
     try {
         const checkAuth = await getuserJWT(req.cookies.bearer);
         if(checkAuth == "error"){

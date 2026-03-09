@@ -1,33 +1,38 @@
 import express, { Request, Response } from "express";
-import  bcrypt from "bcryptjs";
+import bcrypt from "bcryptjs";
 import { User } from "../DB/user.ts";
-import {createJWT} from "../auth.ts"
+import { createJWT, getuserJWT } from "../auth.ts";
 
 const router = express.Router();
 
 router.post("/register", async (req: Request, res: Response) => {
-    try {
-        if(req.body.name ==null || req.body.username==null || req.body.email==null || req.body.password==null){
-            return res.status(400).json({ error: "Missing Params" });
-        }
-        if(!req.body.email.toString().includes("@")){res.status(500).json({ error: "El email es invalido" });}
-        const hashedPassword = await bcrypt.hash(req.body.password,10);
-        const user = new User({
-            id: crypto.randomUUID(),
-            username: req.body.username,
-            name: req.body.name,
-            email: req.body.email,
-            password: hashedPassword,
-            photo: req.body.photo || "default",
-        });
-        await user.save();
-        const token = await createJWT({ username:user.username});
-        res.set({
-         "Set-Cookie": `bearer=${token}; Secure; Path=/; SameSite=Strict`
-        }).status(200).json({success:"OK",username:user.username});
-    } catch (_err: Error | any) {
-        res.status(500).json({ error: "Internal Server Error" });
+  try {
+    if (
+      req.body.name == null || req.body.username == null ||
+      req.body.email == null || req.body.password == null
+    ) {
+      return res.status(400).json({ error: "Missing Params" });
     }
+    if (!req.body.email.toString().includes("@")) {
+      res.status(500).json({ error: "El email es invalido" });
+    }
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+    const user = new User({
+      id: crypto.randomUUID(),
+      username: req.body.username,
+      name: req.body.name,
+      email: req.body.email,
+      password: hashedPassword,
+      photo: req.body.photo || "default",
+    });
+    await user.save();
+    const token = await createJWT({ username: user.username });
+    res.set({
+      "Set-Cookie": `bearer=${token}; Secure; Path=/; SameSite=Strict`,
+    }).status(200).json({ success: "OK", username: user.username });
+  } catch (_err: Error | any) {
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 });
 
 router.post("/login", async (req: Request, res: Response) => {
@@ -53,12 +58,23 @@ router.post("/login", async (req: Request, res: Response) => {
     await user.save();
     const token = await createJWT({ username: user.username });
     return res.set({
-      "Set-Cookie": `bearer=${token}; Secure; Path=/; SameSite=Strict`
+      "Set-Cookie": `bearer=${token}; Secure; Path=/; SameSite=Strict`,
     }).status(200).json({ success: "OK", username: user.username });
   } catch (_err: Error | any) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
+router.post("/me", async (req: Request, res: Response) => {
+  try {
+    const checkAuth = await getuserJWT(req.cookies.bearer);
+    if (checkAuth == "error") {
+      return res.status(404).json({ error: "Please login again" });
+    }
+    const user = await User.findOne({ username: checkAuth });
+    res.status(200).json({ user });
+  } catch (_err: Error | any) {
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 export default router;
-

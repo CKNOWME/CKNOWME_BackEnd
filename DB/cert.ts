@@ -10,6 +10,10 @@ export const certSchema = new mongoose.Schema({
   verifyUrl: { type: String, required: true, default: "" },
   photo: { type: String, required: true, default: "" },
   category: { type: String, required: true, default: "General" },
+  isPublic: { type: Boolean, required: true, default: true },
+  tags: { type: [String], required: true, default: [] },
+  hash: { type: String, required: false, default: "" },
+  expiresAt: { type: Number, required: false },
 });
 
 export const Cert = mongoose.model("CvCerts", certSchema);

@@ -46,7 +46,7 @@ const isValidImageBuffer = (buffer: Uint8Array, mime: string): boolean => {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PHOTO_SIZE },
-  fileFilter: (_req:any, file:any, cb:any) => {
+  fileFilter: (_req: any, file: any, cb: any) => {
     if (!ALLOWED_MIME.includes(file.mimetype)) {
       return cb(new Error("Invalid file type"));
     }
@@ -168,6 +168,9 @@ router.post("/me", userIpRateLimiter, async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         photo: user.photo,
+        age: user.age,
+        studies: user.studies,
+        links: user.links,
         certs: user.certs,
       },
     });
@@ -191,7 +194,7 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Not found" });
     }
 
-    const { name, email } = req.body ?? {};
+    const { name, email, age, studies, links } = req.body ?? {};
     if (email && !isEmailValid(email.toString())) {
       return res.status(400).json({ error: "El email es invalido" });
     }
@@ -204,6 +207,16 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
       user.email = email;
     }
     if (name) user.name = name;
+    if (typeof age === "number") user.age = age;
+    if (typeof studies === "string") user.studies = studies;
+    if (links && typeof links === "object") {
+      user.links = {
+        github: typeof links.github === "string" ? links.github : user.links?.github || "",
+        portfolio: typeof links.portfolio === "string" ? links.portfolio : user.links?.portfolio || "",
+        linkedin: typeof links.linkedin === "string" ? links.linkedin : user.links?.linkedin || "",
+        website: typeof links.website === "string" ? links.website : user.links?.website || "",
+      };
+    }
 
     await user.save();
     return res.status(200).json({
@@ -213,6 +226,9 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         photo: user.photo,
+        age: user.age,
+        studies: user.studies,
+        links: user.links,
         certs: user.certs,
       },
     });
@@ -262,6 +278,28 @@ router.post("/me/photo", userIpRateLimiter, upload.single("photo"), async (req: 
   }
 });
 
+router.delete("/me/photo", userIpRateLimiter, async (req: Request, res: Response) => {
+  try {
+    const checkAuth = await getuserJWT(req.cookies.bearer);
+    if (checkAuth == "error") {
+      return res.status(401).json({ error: "Please login again" });
+    }
+    const user = await User.findOne({ username: checkAuth });
+    if (!user) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    user.photo = "";
+    await user.save();
+    return res.status(200).json({ success: "OK" });
+  } catch (err: Error | any) {
+    console.error("Delete photo error:", err);
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
+  }
+});
+
 router.get("/:username", async (req: Request, res: Response) => {
   try {
     const username = req.params.username;
@@ -280,6 +318,9 @@ router.get("/:username", async (req: Request, res: Response) => {
         username: user.username,
         name: user.name,
         photo: user.photo,
+        age: user.age,
+        studies: user.studies,
+        links: user.links,
         certs,
       },
     });

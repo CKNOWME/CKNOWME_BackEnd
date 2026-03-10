@@ -7,6 +7,14 @@ export const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, trim: true },
   password: { type: String, required: true },
   photo: { type: String, required: false, default: "" },
+  age: { type: Number, required: false },
+  studies: { type: String, required: false, default: "" },
+  links: {
+    github: { type: String, required: false, default: "" },
+    portfolio: { type: String, required: false, default: "" },
+    linkedin: { type: String, required: false, default: "" },
+    website: { type: String, required: false, default: "" },
+  },
   certs: { type: [String], required: true, default: [] },
   intentos: { type: Number, required: true, default: 5 },
 });

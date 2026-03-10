@@ -17,6 +17,70 @@ const parseDate = (value: unknown): number | null => {
   return null;
 };
 
+const PRIVATE_IPS = [
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^169\.254\./,
+  /^0\./,
+  /^::1$/,
+  /^localhost$/i,
+];
+const PRIVATE_IP_RANGES = [/^172\.(1[6-9]|2\d|3[0-1])\./];
+
+const isPrivateHost = (hostname: string): boolean => {
+  return PRIVATE_IPS.some((rule) => rule.test(hostname)) ||
+    PRIVATE_IP_RANGES.some((rule) => rule.test(hostname));
+};
+
+const validatePublicUrl = (rawUrl: string): boolean => {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+    if (isPrivateHost(parsed.hostname)) return false;
+    if (parsed.hostname.endsWith(".local")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const normalizeOptionalUrl = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed;
+};
+
+const ensureSafeUrls = (urls: string[]): boolean => {
+  for (const url of urls) {
+    if (!url) continue;
+    if (!validatePublicUrl(url)) return false;
+  }
+  return true;
+};
+
+const normalizeTags = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter((v) => v.length > 0)
+      .slice(0, 12);
+  }
+  if (typeof value === "string") {
+    return value.split(",").map((v) => v.trim()).filter(Boolean).slice(0, 12);
+  }
+  return [];
+};
+
+const normalizeHash = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const cleaned = value.trim().toLowerCase();
+  if (!cleaned) return "";
+  if (!/^[a-f0-9]{64}$/.test(cleaned)) return "";
+  return cleaned;
+};
+
 const resolveAuthUser = async (req: Request): Promise<string | null> => {
   const jwt = req.cookies?.bearer;
   if (!jwt) return null;
@@ -36,13 +100,21 @@ router.post("/add", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Please login again" });
     }
 
-    const { title, issuer, description, date, photo, pdfUrl, verifyUrl, category } = req.body ?? {};
+    const { title, issuer, description, date, photo, pdfUrl, verifyUrl, category, isPublic, tags, hash, expiresAt } = req.body ?? {};
     if (!title || !issuer || date == null) {
       return res.status(400).json({ error: "Missing Params" });
     }
     const parsedDate = parseDate(date);
     if (parsedDate == null) {
       return res.status(400).json({ error: "Invalid date" });
+    }
+
+    const photoUrl = normalizeOptionalUrl(photo);
+    const pdf = normalizeOptionalUrl(pdfUrl);
+    const verify = normalizeOptionalUrl(verifyUrl);
+
+    if (!ensureSafeUrls([photoUrl, pdf, verify])) {
+      return res.status(400).json({ error: "Invalid URL" });
     }
 
     const cert_id = crypto.randomUUID();
@@ -52,10 +124,14 @@ router.post("/add", async (req: Request, res: Response) => {
       issuer,
       description: description ?? "",
       date: parsedDate,
-      photo: photo ?? "",
-      pdfUrl: pdfUrl ?? "",
-      verifyUrl: verifyUrl ?? "",
-      category: category || "General",
+      photo: photoUrl,
+      pdfUrl: pdf,
+      verifyUrl: verify,
+      category: (typeof category === "string" && category.trim()) ? category.trim() : "General",
+      isPublic: typeof isPublic === "boolean" ? isPublic : true,
+      tags: normalizeTags(tags),
+      hash: normalizeHash(hash),
+      expiresAt: parseDate(expiresAt) ?? undefined,
     });
 
     await cert.save();
@@ -96,10 +172,29 @@ router.put("/id/:id", async (req: Request, res: Response) => {
       }
       cert.date = parsedDate;
     }
-    if (req.body.photo !== undefined) cert.photo = req.body.photo;
-    if (req.body.pdfUrl !== undefined) cert.pdfUrl = req.body.pdfUrl;
-    if (req.body.verifyUrl !== undefined) cert.verifyUrl = req.body.verifyUrl;
-    if (req.body.category !== undefined) cert.category = req.body.category;
+
+    const photoUrl = req.body.photo !== undefined ? normalizeOptionalUrl(req.body.photo) : cert.photo;
+    const pdf = req.body.pdfUrl !== undefined ? normalizeOptionalUrl(req.body.pdfUrl) : cert.pdfUrl;
+    const verify = req.body.verifyUrl !== undefined ? normalizeOptionalUrl(req.body.verifyUrl) : cert.verifyUrl;
+    if (!ensureSafeUrls([photoUrl, pdf, verify])) {
+      return res.status(400).json({ error: "Invalid URL" });
+    }
+    cert.photo = photoUrl;
+    cert.pdfUrl = pdf;
+    cert.verifyUrl = verify;
+
+    if (req.body.category !== undefined) {
+      cert.category = typeof req.body.category === "string" && req.body.category.trim()
+        ? req.body.category.trim()
+        : cert.category;
+    }
+
+    if (req.body.isPublic !== undefined) cert.isPublic = Boolean(req.body.isPublic);
+    if (req.body.tags !== undefined) cert.tags = normalizeTags(req.body.tags);
+    if (req.body.hash !== undefined) cert.hash = normalizeHash(req.body.hash);
+    if (req.body.expiresAt !== undefined) {
+      cert.expiresAt = parseDate(req.body.expiresAt) ?? cert.expiresAt;
+    }
 
     await cert.save();
     return res.status(200).json({ success: "OK", certId: cert.id });

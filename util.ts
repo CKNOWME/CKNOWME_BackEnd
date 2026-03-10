@@ -1,4 +1,4 @@
-import { CredlyBadge, CredlyResponse, CredlySkill } from "./types.ts";
+import { CredlyBadge, CredlySkill } from "./types.ts";
 import { getuserJWT } from "./auth.ts";
 import { Request } from "express";
 
@@ -125,3 +125,5 @@ export const issuerFrom = (badge: CredlyBadge): string => {
   }
   return summary || "Credly";
 };
+
+

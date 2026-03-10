@@ -59,3 +59,4 @@ export type CredlyBadge = {
 export type CredlyResponse = {
   data?: CredlyBadge[];
 };
+

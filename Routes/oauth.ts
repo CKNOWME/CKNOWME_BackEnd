@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import multer from "multer";
 import { User } from "../DB/user.ts";
 import { Cert } from "../DB/cert.ts";
 import { userIpRateLimiter } from "../security.ts";
@@ -11,11 +12,107 @@ import {
   parseDate,
   normalizeTags,
   ensureSafeUrls,
-  getCredlyBadges,
+  getCredlyBadges
 } from "../util.ts";
 
 const router = express.Router();
 router.use(userIpRateLimiter);
+
+
+const uploadLinkedinHtml = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    const ok = ["text/html", "application/xhtml+xml"].includes(file.mimetype);
+    if (!ok) return cb(new Error("Invalid file type"));
+    cb(null, true);
+  },
+});
+
+
+
+router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (req: Request, res: Response) => {
+  try {
+    const username = await resolveAuthUser(req);
+    if (!username) {
+      return res.status(401).json({ error: "Please login again" });
+    }
+
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ error: "Please login again" });
+    }
+
+    const file = req.file;
+    if (!file || !file.buffer) {
+      return res.status(400).json({ error: "Missing file" });
+    }
+
+    const html = file.buffer.toString("utf-8");
+    const parsed = parseLinkedinHtml(html);
+
+    if (parsed.length == 0) {
+      return res.status(200).json({ success: "OK", imported: 0, skipped: 0 });
+    }
+
+    const mapped = parsed.map((cert) => {
+      const verifyUrl = cert.verifyUrl || "";
+      const pdfUrl = "";
+      const photo = cert.photo || "";
+      const date = cert.issuedAt || Date.now();
+      const expiresAt = cert.expiresAt || undefined;
+      return {
+        verifyUrl,
+        data: {
+          id: crypto.randomUUID(),
+          title: cert.title,
+          issuer: cert.issuer,
+          description: "",
+          date,
+          pdfUrl,
+          verifyUrl,
+          photo,
+          category: "LinkedIn",
+          isPublic: true,
+          tags: [],
+          hash: "",
+          expiresAt,
+        },
+      };
+    }).filter((item) => {
+      return ensureSafeUrls([item.verifyUrl, item.data.photo]);
+    });
+
+    if (mapped.length == 0) {
+      return res.status(200).json({ success: "OK", imported: 0, skipped: parsed.length });
+    }
+
+    const verifyUrls = mapped.map((m) => m.verifyUrl).filter(Boolean);
+    const existing = await Cert.find({
+      id: { $in: user.certs },
+      verifyUrl: { $in: verifyUrls },
+    }).select("verifyUrl -_id");
+    const existingSet = new Set(existing.map((e: { verifyUrl: string }) => e.verifyUrl));
+
+    const toInsert = mapped.filter((m) => !m.verifyUrl || !existingSet.has(m.verifyUrl)).map((m) => m.data);
+
+    if (toInsert.length === 0) {
+      return res.status(200).json({ success: "OK", imported: 0, skipped: mapped.length });
+    }
+
+    await Cert.insertMany(toInsert);
+    user.certs.push(...toInsert.map((c: { id: string }) => c.id));
+    await user.save();
+
+    return res.status(200).json({
+      success: "OK",
+      imported: toInsert.length,
+      skipped: mapped.length - toInsert.length,
+    });
+  } catch (_err) {
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 router.post("/credly/import", async (req: Request, res: Response) => {
   try {
@@ -147,5 +244,10 @@ router.post("/credly/import", async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+
+router.post("/linkedin/import", async (req: Request, res: Response) => {
+  });
+
 
 export default router;

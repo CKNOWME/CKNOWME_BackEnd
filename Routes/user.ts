@@ -118,7 +118,6 @@ router.post("/register", authRateLimiter, async (req: Request, res: Response) =>
       .status(200)
       .json({ success: "OK", username: user.username });
   } catch (err: Error | any) {
-    console.error("Register error:", err);
     if (err?.code === 11000) {
       return res.status(409).json({ error: "Usuario o email ya registrado" });
     }
@@ -158,7 +157,6 @@ router.post("/login", authRateLimiter, async (req: Request, res: Response) => {
       .status(200)
       .json({ success: "OK", username: user.username });
   } catch (err: Error | any) {
-    console.error("Login error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
       detail: isProd ? undefined : (err?.message || String(err)),
@@ -197,7 +195,6 @@ router.post("/me", userIpRateLimiter, async (req: Request, res: Response) => {
       },
     });
   } catch (err: Error | any) {
-    console.error("Me error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
       detail: isProd ? undefined : (err?.message || String(err)),
@@ -256,7 +253,6 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
       },
     });
   } catch (err: Error | any) {
-    console.error("Update profile error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
       detail: isProd ? undefined : (err?.message || String(err)),
@@ -293,7 +289,6 @@ router.post("/me/photo", userIpRateLimiter, upload.single("photo"), async (req: 
 
     return res.status(200).json({ success: "OK", photo: user.photo });
   } catch (err: Error | any) {
-    console.error("Upload photo error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
       detail: isProd ? undefined : (err?.message || String(err)),
@@ -331,7 +326,6 @@ router.post("/me/cv", userIpRateLimiter, uploadCv.single("cv"), async (req: Requ
 
     return res.status(200).json({ success: "OK", cv: user.cv });
   } catch (err: Error | any) {
-    console.error("Upload CV error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
       detail: isProd ? undefined : (err?.message || String(err)),
@@ -353,7 +347,6 @@ router.delete("/me/cv", userIpRateLimiter, async (req: Request, res: Response) =
     await user.save();
     return res.status(200).json({ success: "OK" });
   } catch (err: Error | any) {
-    console.error("Delete CV error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
       detail: isProd ? undefined : (err?.message || String(err)),
@@ -375,7 +368,6 @@ router.delete("/me/photo", userIpRateLimiter, async (req: Request, res: Response
     await user.save();
     return res.status(200).json({ success: "OK" });
   } catch (err: Error | any) {
-    console.error("Delete photo error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
       detail: isProd ? undefined : (err?.message || String(err)),
@@ -409,7 +401,6 @@ router.get("/:username", async (req: Request, res: Response) => {
       },
     });
   } catch (err: Error | any) {
-    console.error("Public user error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
       detail: isProd ? undefined : (err?.message || String(err)),

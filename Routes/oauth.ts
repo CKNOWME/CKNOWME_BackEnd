@@ -2,8 +2,17 @@ import express, { Request, Response } from "express";
 import { User } from "../DB/user.ts";
 import { Cert } from "../DB/cert.ts";
 import { userIpRateLimiter } from "../security.ts";
-import {CredlyResponse} from "../types.ts"
-import {resolveAuthUser,extractCredlySlug,badgeEndpointFor,issuerFrom,parseDate,normalizeTags,ensureSafeUrls} from "../util.ts"
+import { CredlyBadge } from "../types.ts";
+import {
+  resolveAuthUser,
+  extractCredlySlug,
+  badgeEndpointFor,
+  issuerFrom,
+  parseDate,
+  normalizeTags,
+  ensureSafeUrls,
+  getCredlyBadges,
+} from "../util.ts";
 
 const router = express.Router();
 router.use(userIpRateLimiter);
@@ -20,7 +29,7 @@ router.post("/credly/import", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Please login again" });
     }
 
-    const rawUrl = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+    const rawUrl = req.body?.url ? String(req.body.url).trim() : "";
     if (!rawUrl) {
       return res.status(400).json({ error: "Missing URL" });
     }
@@ -33,12 +42,13 @@ router.post("/credly/import", async (req: Request, res: Response) => {
     const endpoint = badgeEndpointFor(slug);
     const response = await fetch(endpoint, {
       headers: {
-        "Sec-Ch-Ua-Platform": '"macOS"',
-        "Accept-Language": "es-ES,es;q=0.9",
         "Accept": "application/json",
-        "Sec-Ch-Ua": '"Chromium";v="145", "Not:A-Brand";v="99"',
+        "X-Requested-With": "XMLHttpRequest",
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "Accept-Language": "es-ES,es;q=0.9",
+        "Sec-Ch-Ua": '"Chromium";v="145", "Not:A-Brand";v="99"',
         "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"macOS"',
         "Sec-Fetch-Site": "same-origin",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Dest": "empty",
@@ -47,20 +57,29 @@ router.post("/credly/import", async (req: Request, res: Response) => {
         "Priority": "u=1, i",
       },
     });
-    console.log(await response.json())
+
     if (!response.ok) {
-      return res.status(502).json({ error: "Credly fetch failed" });
+      const body = await response.text();
+      return res.status(502).json({ error: "Credly import failed" });
     }
 
-    const json = (await response.json()) as CredlyResponse;
-    const badges = Array.isArray(json.data) ? json.data : [];
+    const text = await response.text();
+    if (text.trim().startsWith("<")) {
+      return res.status(502).json({ error: "Credly import failed" });
+    }
+    const json = JSON.parse(text);
+    const id = json?.data?.synthetic_id ? json.data.synthetic_id : null;
+    if (!id) {
+      return res.status(502).json({ error: "Credly import failed" });
+    }
 
-    if (badges.length === 0) {
-      return res.status(200).json({ success: "OK", imported: 0, skipped: 0 });
+    const badges: CredlyBadge[] | null = await getCredlyBadges(id);
+    if (!badges) {
+      return res.status(502).json({ error: "Credly import failed" });
     }
 
     const mapped = badges
-      .map((badge): { data: any; verifyUrl: string } | null => {
+      .map((badge: CredlyBadge): { data: any; verifyUrl: string } | null => {
         const date = parseDate(badge.issued_at_date);
         if (!date) return null;
 
@@ -68,8 +87,8 @@ router.post("/credly/import", async (req: Request, res: Response) => {
         const issuer = issuerFrom(badge);
         const description = badge.badge_template?.description || "";
         const photo = badge.badge_template?.image_url || badge.image_url || "";
-        const verifyUrl = `https://www.credly.com/earner/earned/badge/${badge.id}`;
-        const pdfUrl = `https://www.credly.com/earner/earned/share/${badge.id}`;
+        const verifyUrl = `https://www.credly.com/badges/${badge.id}`;
+        const pdfUrl = `https://www.credly.com/badges/${badge.id}`;
         const category = badge.badge_template?.type_category || "Credly";
         const tags = normalizeTags(badge.badge_template?.skills);
         const expiresAt = parseDate(badge.expires_at_date ?? null) || undefined;

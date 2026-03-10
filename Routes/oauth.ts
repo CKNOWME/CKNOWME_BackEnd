@@ -12,12 +12,12 @@ import {
   parseDate,
   normalizeTags,
   ensureSafeUrls,
-  getCredlyBadges
+  getCredlyBadges,
+  parseLinkedinHtmlList,
 } from "../util.ts";
 
 const router = express.Router();
 router.use(userIpRateLimiter);
-
 
 const uploadLinkedinHtml = multer({
   storage: multer.memoryStorage(),
@@ -29,96 +29,12 @@ const uploadLinkedinHtml = multer({
   },
 });
 
-
-
-
-    const user = await User.findOne({ username });
-    if (!user) {
-      return res.status(401).json({ error: "Please login again" });
-    }
-
-    const file = req.file;
-    if (!file || !file.buffer) {
-      return res.status(400).json({ error: "Missing file" });
-    }
-
-    let parsed = [] as any[];
-    try {
-      parsed = await parseLinkedinPdfBuffer(file.buffer);
-    } catch (err) {
-      console.error("LinkedIn PDF parse error:", err);
-      return res.status(500).json({ error: "Parse error" });
-    }
-
-    if (parsed.length == 0) {
-      return res.status(200).json({ success: "OK", imported: 0, skipped: 0 });
-    }
-
-    const mapped = parsed.map((cert) => {
-      const verifyUrl = cert.verifyUrl || "";
-      const pdfUrl = "";
-      const photo = cert.photo || "";
-      const date = cert.issuedAt || Date.now();
-      const expiresAt = cert.expiresAt || undefined;
-      return {
-        verifyUrl,
-        data: {
-          id: crypto.randomUUID(),
-          title: cert.title,
-          issuer: cert.issuer,
-          description: "",
-          date,
-          pdfUrl,
-          verifyUrl,
-          photo,
-          category: "LinkedIn",
-          isPublic: true,
-          tags: [],
-          hash: "",
-          expiresAt,
-        },
-      };
-    }).filter((item) => ensureSafeUrls([item.verifyUrl, item.data.photo]));
-
-    if (mapped.length == 0) {
-      return res.status(200).json({ success: "OK", imported: 0, skipped: parsed.length });
-    }
-
-    const verifyUrls = mapped.map((m) => m.verifyUrl).filter(Boolean);
-    const existing = await Cert.find({
-      id: { $in: user.certs },
-      verifyUrl: { $in: verifyUrls },
-    }).select("verifyUrl -_id");
-    const existingSet = new Set(existing.map((e: { verifyUrl: string }) => e.verifyUrl));
-
-    const toInsert = mapped.filter((m) => !m.verifyUrl || !existingSet.has(m.verifyUrl)).map((m) => m.data);
-
-    if (toInsert.length === 0) {
-      return res.status(200).json({ success: "OK", imported: 0, skipped: mapped.length });
-    }
-
-    await Cert.insertMany(toInsert);
-    user.certs.push(...toInsert.map((c: { id: string }) => c.id));
-    await user.save();
-
-    return res.status(200).json({
-      success: "OK",
-      imported: toInsert.length,
-      skipped: mapped.length - toInsert.length,
-    });
-  } catch (err) {
-    console.error("LinkedIn PDF import error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
 router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (req: Request, res: Response) => {
   try {
     const username = await resolveAuthUser(req);
     if (!username) {
       return res.status(401).json({ error: "Please login again" });
     }
-
 
     const user = await User.findOne({ username });
     if (!user) {
@@ -138,7 +54,7 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
       return res.status(400).json({ error: "Empty HTML" });
     }
 
-    let parsed = [];
+    let parsed = [] as any[];
     try {
       parsed = parseLinkedinHtmlList(html);
       console.log("LinkedIn parsed certs:", parsed.length);
@@ -154,33 +70,33 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
       return res.status(200).json({ success: "OK", imported: 0, skipped: 0 });
     }
 
-    const mapped = parsed.map((cert) => {
-      const verifyUrl = cert.verifyUrl || "";
-      const pdfUrl = "";
-      const photo = cert.photo || "";
-      const date = cert.issuedAt || Date.now();
-      const expiresAt = cert.expiresAt || undefined;
-      return {
-        verifyUrl,
-        data: {
-          id: crypto.randomUUID(),
-          title: cert.title,
-          issuer: cert.issuer,
-          description: "",
-          date,
-          pdfUrl,
+    const mapped = parsed
+      .map((cert) => {
+        const verifyUrl = cert.verifyUrl || "";
+        const pdfUrl = "";
+        const photo = cert.photo || "";
+        const date = cert.issuedAt || Date.now();
+        const expiresAt = cert.expiresAt || undefined;
+        return {
           verifyUrl,
-          photo,
-          category: "LinkedIn",
-          isPublic: true,
-          tags: [],
-          hash: "",
-          expiresAt,
-        },
-      };
-    }).filter((item) => {
-      return ensureSafeUrls([item.verifyUrl, item.data.photo]);
-    });
+          data: {
+            id: crypto.randomUUID(),
+            title: cert.title,
+            issuer: cert.issuer,
+            description: "",
+            date,
+            pdfUrl,
+            verifyUrl,
+            photo,
+            category: "LinkedIn",
+            isPublic: true,
+            tags: [],
+            hash: "",
+            expiresAt,
+          },
+        };
+      })
+      .filter((item) => ensureSafeUrls([item.verifyUrl, item.data.photo]));
 
     if (mapped.length == 0) {
       return res.status(200).json({ success: "OK", imported: 0, skipped: parsed.length });
@@ -193,7 +109,9 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
     }).select("verifyUrl -_id");
     const existingSet = new Set(existing.map((e: { verifyUrl: string }) => e.verifyUrl));
 
-    const toInsert = mapped.filter((m) => !m.verifyUrl || !existingSet.has(m.verifyUrl)).map((m) => m.data);
+    const toInsert = mapped
+      .filter((m) => !m.verifyUrl || !existingSet.has(m.verifyUrl))
+      .map((m) => m.data);
 
     if (toInsert.length === 0) {
       return res.status(200).json({ success: "OK", imported: 0, skipped: mapped.length });
@@ -239,9 +157,10 @@ router.post("/credly/import", async (req: Request, res: Response) => {
     const endpoint = badgeEndpointFor(slug);
     const response = await fetch(endpoint, {
       headers: {
-        "Accept": "application/json",
+        Accept: "application/json",
         "X-Requested-With": "XMLHttpRequest",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
         "Accept-Language": "es-ES,es;q=0.9",
         "Sec-Ch-Ua": '"Chromium";v="145", "Not:A-Brand";v="99"',
         "Sec-Ch-Ua-Mobile": "?0",
@@ -249,14 +168,14 @@ router.post("/credly/import", async (req: Request, res: Response) => {
         "Sec-Fetch-Site": "same-origin",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Dest": "empty",
-        "Referer": `https://www.credly.com/users/${slug}/badges`,
+        Referer: `https://www.credly.com/users/${slug}/badges`,
         "Accept-Encoding": "gzip, deflate, br",
-        "Priority": "u=1, i",
+        Priority: "u=1, i",
       },
     });
 
     if (!response.ok) {
-      const body = await response.text();
+      await response.text();
       return res.status(502).json({ error: "Credly import failed" });
     }
 
@@ -345,10 +264,5 @@ router.post("/credly/import", async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
-
-router.post("/linkedin/import", async (req: Request, res: Response) => {
-  });
-
 
 export default router;

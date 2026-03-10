@@ -6,7 +6,7 @@ Security measures to prevent DoS, XSS, SSRF, RCE, NoSQL injection
 
 import { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 const PRIVATE_IPS = [
   /^127\./,
@@ -122,7 +122,7 @@ export const authRateLimiter = rateLimit({
   message: { error: "Too many requests" },
   keyGenerator: (req: Request) => {
     const username = typeof req.body?.username === "string" ? req.body.username : "";
-    return `${req.ip}:${username}`;
+    return `${ipKeyGenerator(req)}:${username}`;
   },
 });
 
@@ -134,7 +134,7 @@ export const userIpRateLimiter = rateLimit({
   message: { error: "Too many requests" },
   keyGenerator: (req: Request) => {
     const token = typeof req.cookies?.bearer === "string" ? req.cookies.bearer : "";
-    return `${req.ip}:${token}`;
+    return `${ipKeyGenerator(req)}:${token}`;
   },
 });
 

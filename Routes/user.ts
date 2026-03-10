@@ -5,6 +5,7 @@ import { User } from "../DB/user.ts";
 import { Cert } from "../DB/cert.ts";
 import { createJWT, getuserJWT } from "../auth.ts";
 import { authRateLimiter, userIpRateLimiter } from "../security.ts";
+import { Buffer } from "node:buffer";
 
 const router = express.Router();
 
@@ -45,7 +46,7 @@ const isValidImageBuffer = (buffer: Uint8Array, mime: string): boolean => {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PHOTO_SIZE },
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req:any, file:any, cb:any) => {
     if (!ALLOWED_MIME.includes(file.mimetype)) {
       return cb(new Error("Invalid file type"));
     }

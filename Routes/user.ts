@@ -1,5 +1,6 @@
 import express, { Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import multer from "multer";
 import { User } from "../DB/user.ts";
 import { Cert } from "../DB/cert.ts";
 import { createJWT, getuserJWT } from "../auth.ts";
@@ -8,20 +9,49 @@ import { authRateLimiter, userIpRateLimiter } from "../security.ts";
 const router = express.Router();
 
 const MAX_LOGIN_ATTEMPTS = 5;
+const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB
+const ALLOWED_MIME = ["image/png", "image/jpeg", "image/jpg"];
+const isProd = Deno.env.get("NODE_ENV") === "production";
 
 const buildAuthCookie = (token: string): string => {
-  return `bearer=${token}; Path=/; SameSite=Lax; Max-Age=3600; HttpOnly; Secure`;
+  const secure = isProd ? "; Secure" : "";
+  return `bearer=${token}; Path=/; SameSite=Lax; Max-Age=3600; HttpOnly${secure}`;
 };
 const clearAuthCookie = (): string => {
-  return `bearer=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure`;
+  const secure = isProd ? "; Secure" : "";
+  return `bearer=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly${secure}`;
 };
 const buildCsrfCookie = (token: string): string => {
-  return `csrf=${token}; Path=/; SameSite=Lax; Max-Age=3600; Secure`;
+  const secure = isProd ? "; Secure" : "";
+  return `csrf=${token}; Path=/; SameSite=Lax; Max-Age=3600${secure}`;
 };
 
 const isEmailValid = (email: string): boolean => {
   return email.includes("@") && email.includes(".");
 };
+
+const isValidImageBuffer = (buffer: Uint8Array, mime: string): boolean => {
+  if (mime === "image/png") {
+    return buffer.length >= 8 &&
+      buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+      buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a;
+  }
+  if (mime === "image/jpeg" || mime === "image/jpg") {
+    return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  return false;
+};
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PHOTO_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_MIME.includes(file.mimetype)) {
+      return cb(new Error("Invalid file type"));
+    }
+    cb(null, true);
+  },
+});
 
 router.get("/csrf", (_req: Request, res: Response) => {
   const token = crypto.randomUUID();
@@ -33,7 +63,7 @@ router.get("/csrf", (_req: Request, res: Response) => {
 
 router.post("/register", authRateLimiter, async (req: Request, res: Response) => {
   try {
-    const { name, username, email, password, photo } = req.body ?? {};
+    const { name, username, email, password } = req.body ?? {};
     if (!name || !username || !email || !password) {
       return res.status(400).json({ error: "Missing Params" });
     }
@@ -55,7 +85,7 @@ router.post("/register", authRateLimiter, async (req: Request, res: Response) =>
       name,
       email,
       password: hashedPassword,
-      photo: photo || "",
+      photo: "",
       intentos: MAX_LOGIN_ATTEMPTS,
     });
     await user.save();
@@ -72,6 +102,7 @@ router.post("/register", authRateLimiter, async (req: Request, res: Response) =>
     }
     return res.status(500).json({
       error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });
@@ -108,6 +139,7 @@ router.post("/login", authRateLimiter, async (req: Request, res: Response) => {
     console.error("Login error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });
@@ -142,6 +174,7 @@ router.post("/me", userIpRateLimiter, async (req: Request, res: Response) => {
     console.error("Me error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });
@@ -157,7 +190,7 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Not found" });
     }
 
-    const { name, email, photo } = req.body ?? {};
+    const { name, email } = req.body ?? {};
     if (email && !isEmailValid(email.toString())) {
       return res.status(400).json({ error: "El email es invalido" });
     }
@@ -170,7 +203,6 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
       user.email = email;
     }
     if (name) user.name = name;
-    if (photo !== undefined) user.photo = photo;
 
     await user.save();
     return res.status(200).json({
@@ -187,6 +219,44 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
     console.error("Update profile error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
+  }
+});
+
+router.post("/me/photo", userIpRateLimiter, upload.single("photo"), async (req: Request, res: Response) => {
+  try {
+    const checkAuth = await getuserJWT(req.cookies.bearer);
+    if (checkAuth == "error") {
+      return res.status(401).json({ error: "Please login again" });
+    }
+    const user = await User.findOne({ username: checkAuth });
+    if (!user) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const file = req.file;
+    if (!file || !file.buffer) {
+      return res.status(400).json({ error: "Missing file" });
+    }
+    if (!ALLOWED_MIME.includes(file.mimetype)) {
+      return res.status(400).json({ error: "Invalid file type" });
+    }
+    if (!isValidImageBuffer(file.buffer, file.mimetype)) {
+      return res.status(400).json({ error: "Invalid image" });
+    }
+
+    const base64 = Buffer.from(file.buffer).toString("base64");
+    const dataUrl = `data:${file.mimetype};base64,${base64}`;
+    user.photo = dataUrl;
+    await user.save();
+
+    return res.status(200).json({ success: "OK", photo: user.photo });
+  } catch (err: Error | any) {
+    console.error("Upload photo error:", err);
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });
@@ -216,6 +286,7 @@ router.get("/:username", async (req: Request, res: Response) => {
     console.error("Public user error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });

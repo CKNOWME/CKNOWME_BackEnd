@@ -31,12 +31,6 @@ const uploadLinkedinHtml = multer({
 
 
 
-router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (req: Request, res: Response) => {
-  try {
-    const username = await resolveAuthUser(req);
-    if (!username) {
-      return res.status(401).json({ error: "Please login again" });
-    }
 
     const user = await User.findOne({ username });
     if (!user) {
@@ -48,8 +42,113 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
       return res.status(400).json({ error: "Missing file" });
     }
 
+    let parsed = [] as any[];
+    try {
+      parsed = await parseLinkedinPdfBuffer(file.buffer);
+    } catch (err) {
+      console.error("LinkedIn PDF parse error:", err);
+      return res.status(500).json({ error: "Parse error" });
+    }
+
+    if (parsed.length == 0) {
+      return res.status(200).json({ success: "OK", imported: 0, skipped: 0 });
+    }
+
+    const mapped = parsed.map((cert) => {
+      const verifyUrl = cert.verifyUrl || "";
+      const pdfUrl = "";
+      const photo = cert.photo || "";
+      const date = cert.issuedAt || Date.now();
+      const expiresAt = cert.expiresAt || undefined;
+      return {
+        verifyUrl,
+        data: {
+          id: crypto.randomUUID(),
+          title: cert.title,
+          issuer: cert.issuer,
+          description: "",
+          date,
+          pdfUrl,
+          verifyUrl,
+          photo,
+          category: "LinkedIn",
+          isPublic: true,
+          tags: [],
+          hash: "",
+          expiresAt,
+        },
+      };
+    }).filter((item) => ensureSafeUrls([item.verifyUrl, item.data.photo]));
+
+    if (mapped.length == 0) {
+      return res.status(200).json({ success: "OK", imported: 0, skipped: parsed.length });
+    }
+
+    const verifyUrls = mapped.map((m) => m.verifyUrl).filter(Boolean);
+    const existing = await Cert.find({
+      id: { $in: user.certs },
+      verifyUrl: { $in: verifyUrls },
+    }).select("verifyUrl -_id");
+    const existingSet = new Set(existing.map((e: { verifyUrl: string }) => e.verifyUrl));
+
+    const toInsert = mapped.filter((m) => !m.verifyUrl || !existingSet.has(m.verifyUrl)).map((m) => m.data);
+
+    if (toInsert.length === 0) {
+      return res.status(200).json({ success: "OK", imported: 0, skipped: mapped.length });
+    }
+
+    await Cert.insertMany(toInsert);
+    user.certs.push(...toInsert.map((c: { id: string }) => c.id));
+    await user.save();
+
+    return res.status(200).json({
+      success: "OK",
+      imported: toInsert.length,
+      skipped: mapped.length - toInsert.length,
+    });
+  } catch (err) {
+    console.error("LinkedIn PDF import error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (req: Request, res: Response) => {
+  try {
+    const username = await resolveAuthUser(req);
+    if (!username) {
+      return res.status(401).json({ error: "Please login again" });
+    }
+
+
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ error: "Please login again" });
+    }
+
+    const file = req.file;
+    if (!file || !file.buffer) {
+      return res.status(400).json({ error: "Missing file" });
+    }
+    console.log("LinkedIn HTML import:", file.originalname, file.mimetype, file.size);
+
     const html = file.buffer.toString("utf-8");
-    const parsed = parseLinkedinHtml(html);
+    console.log("LinkedIn HTML size:", html.length);
+    console.log("LinkedIn HTML head:", html.slice(0, 400));
+    if (html.length < 200) {
+      return res.status(400).json({ error: "Empty HTML" });
+    }
+
+    let parsed = [];
+    try {
+      parsed = parseLinkedinHtmlList(html);
+      console.log("LinkedIn parsed certs:", parsed.length);
+      if (parsed.length > 0) {
+        console.log("LinkedIn sample:", parsed[0]);
+      }
+    } catch (err) {
+      console.error("LinkedIn parse error:", err);
+      return res.status(500).json({ error: "Parse error" });
+    }
 
     if (parsed.length == 0) {
       return res.status(200).json({ success: "OK", imported: 0, skipped: 0 });
@@ -109,7 +208,8 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
       imported: toInsert.length,
       skipped: mapped.length - toInsert.length,
     });
-  } catch (_err) {
+  } catch (err) {
+    console.error("LinkedIn import error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -240,7 +340,8 @@ router.post("/credly/import", async (req: Request, res: Response) => {
       imported: toInsert.length,
       skipped: mapped.length - toInsert.length,
     });
-  } catch (_err) {
+  } catch (err) {
+    console.error("LinkedIn import error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });

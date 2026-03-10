@@ -8,22 +8,24 @@ import { authRateLimiter, userIpRateLimiter } from "../security.ts";
 const router = express.Router();
 
 const MAX_LOGIN_ATTEMPTS = 5;
-
+const isProd = Deno.env.get("NODE_ENV") === "production";
 
 const buildAuthCookie = (token: string): string => {
-  
-  return `bearer=${token}; Path=/; SameSite=Lax; Max-Age=3600; HttpOnly; Secure`;
+  const secure = isProd ? "; Secure" : "";
+  return `bearer=${token}; Path=/; SameSite=Lax; Max-Age=3600; HttpOnly${secure}`;
 };
 const clearAuthCookie = (): string => {
-  return `bearer=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure`;
+  const secure = isProd ? "; Secure" : "";
+  return `bearer=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly${secure}`;
 };
 const buildCsrfCookie = (token: string): string => {
-  return `csrf=${token}; Path=/; SameSite=Lax; Max-Age=3600; Secure`;
+  const secure = isProd ? "; Secure" : "";
+  return `csrf=${token}; Path=/; SameSite=Lax; Max-Age=3600${secure}`;
 };
+
 const isEmailValid = (email: string): boolean => {
   return email.includes("@") && email.includes(".");
 };
-
 
 router.get("/csrf", (_req: Request, res: Response) => {
   const token = crypto.randomUUID();
@@ -67,8 +69,15 @@ router.post("/register", authRateLimiter, async (req: Request, res: Response) =>
       .set({ "Set-Cookie": buildAuthCookie(token) })
       .status(200)
       .json({ success: "OK", username: user.username });
-  } catch (_err: Error | any) {
-    return res.status(500).json({ error: "Internal Server Error" });
+  } catch (err: Error | any) {
+    console.error("Register error:", err);
+    if (err?.code === 11000) {
+      return res.status(409).json({ error: "Usuario o email ya registrado" });
+    }
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
   }
 });
 
@@ -100,8 +109,12 @@ router.post("/login", authRateLimiter, async (req: Request, res: Response) => {
       .set({ "Set-Cookie": buildAuthCookie(token) })
       .status(200)
       .json({ success: "OK", username: user.username });
-  } catch (_err: Error | any) {
-    return res.status(500).json({ error: "Internal Server Error" });
+  } catch (err: Error | any) {
+    console.error("Login error:", err);
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
   }
 });
 
@@ -131,8 +144,12 @@ router.post("/me", userIpRateLimiter, async (req: Request, res: Response) => {
         certs: user.certs,
       },
     });
-  } catch (_err: Error | any) {
-    return res.status(500).json({ error: "Internal Server Error" });
+  } catch (err: Error | any) {
+    console.error("Me error:", err);
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
   }
 });
 
@@ -173,8 +190,12 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
         certs: user.certs,
       },
     });
-  } catch (_err: Error | any) {
-    return res.status(500).json({ error: "Internal Server Error" });
+  } catch (err: Error | any) {
+    console.error("Update profile error:", err);
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
   }
 });
 
@@ -199,8 +220,12 @@ router.get("/:username", async (req: Request, res: Response) => {
         certs,
       },
     });
-  } catch (_err: Error | any) {
-    return res.status(500).json({ error: "Internal Server Error" });
+  } catch (err: Error | any) {
+    console.error("Public user error:", err);
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
   }
 });
 

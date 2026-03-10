@@ -8,19 +8,15 @@ import { authRateLimiter, userIpRateLimiter } from "../security.ts";
 const router = express.Router();
 
 const MAX_LOGIN_ATTEMPTS = 5;
-const isProd = Deno.env.get("NODE_ENV") === "production";
 
 const buildAuthCookie = (token: string): string => {
-  const secure = isProd ? "; Secure" : "";
-  return `bearer=${token}; Path=/; SameSite=Lax; Max-Age=3600; HttpOnly${secure}`;
+  return `bearer=${token}; Path=/; SameSite=Lax; Max-Age=3600; HttpOnly; Secure`;
 };
 const clearAuthCookie = (): string => {
-  const secure = isProd ? "; Secure" : "";
-  return `bearer=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly${secure}`;
+  return `bearer=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure`;
 };
 const buildCsrfCookie = (token: string): string => {
-  const secure = isProd ? "; Secure" : "";
-  return `csrf=${token}; Path=/; SameSite=Lax; Max-Age=3600${secure}`;
+  return `csrf=${token}; Path=/; SameSite=Lax; Max-Age=3600; Secure`;
 };
 
 const isEmailValid = (email: string): boolean => {
@@ -76,7 +72,6 @@ router.post("/register", authRateLimiter, async (req: Request, res: Response) =>
     }
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });
@@ -113,7 +108,6 @@ router.post("/login", authRateLimiter, async (req: Request, res: Response) => {
     console.error("Login error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });
@@ -148,7 +142,6 @@ router.post("/me", userIpRateLimiter, async (req: Request, res: Response) => {
     console.error("Me error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });
@@ -194,7 +187,6 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
     console.error("Update profile error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });
@@ -224,7 +216,6 @@ router.get("/:username", async (req: Request, res: Response) => {
     console.error("Public user error:", err);
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
     });
   }
 });

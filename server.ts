@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import userRoutes from "./Routes/user.ts";
 import certificateRoutes from "./Routes/certificate.ts";
+import oauthRoutes from "./Routes/oauth.ts";
 import cookieParser from "cookie-parser";
 
 import {
@@ -32,6 +33,7 @@ app.use(csrfGuard); // CSRF for unsafe methods
 
 app.use("/user", userRoutes);
 app.use("/certificate", certificateRoutes);
+app.use("/oauth", oauthRoutes);
 
 mongoose.connect(mongoUri)
   .then(() => {

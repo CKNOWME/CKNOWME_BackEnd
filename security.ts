@@ -88,7 +88,7 @@ const isPrivateHost = (hostname: string): boolean => {
 };
 
 // SSRF
-const validateOutboundUrl = (rawUrl: string): boolean => {
+export const validateOutboundUrl = (rawUrl: string): boolean => {
   try {
     const parsed = new URL(rawUrl);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
@@ -98,6 +98,15 @@ const validateOutboundUrl = (rawUrl: string): boolean => {
   } catch {
     return false;
   }
+};
+
+
+export const ensureSafeUrls = (urls: string[]): boolean => {
+  for (const url of urls) {
+    if (!url) continue;
+    if (!validateOutboundUrl(url)) return false;
+  }
+  return true;
 };
 
 export const securityHeaders = helmet({

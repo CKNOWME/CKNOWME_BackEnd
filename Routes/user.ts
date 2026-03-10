@@ -11,7 +11,9 @@ const router = express.Router();
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_CV_SIZE = 4 * 1024 * 1024; // 4MB
 const ALLOWED_MIME = ["image/png", "image/jpeg", "image/jpg"];
+const CV_MIME = ["application/pdf"];
 const isProd = Deno.env.get("NODE_ENV") === "production";
 
 const buildAuthCookie = (token: string): string => {
@@ -43,6 +45,11 @@ const isValidImageBuffer = (buffer: Uint8Array, mime: string): boolean => {
   return false;
 };
 
+
+const isValidPdfBuffer = (buffer: Uint8Array): boolean => {
+  return buffer.length >= 4 && buffer[0] == 0x25 && buffer[1] == 0x50 && buffer[2] == 0x44 && buffer[3] == 0x46;
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PHOTO_SIZE },
@@ -53,6 +60,19 @@ const upload = multer({
     cb(null, true);
   },
 });
+
+
+const uploadCv = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_CV_SIZE },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (!CV_MIME.includes(file.mimetype)) {
+      return cb(new Error("Invalid file type"));
+    }
+    cb(null, true);
+  },
+});
+
 
 router.get("/csrf", (_req: Request, res: Response) => {
   const token = crypto.randomUUID();
@@ -87,6 +107,7 @@ router.post("/register", authRateLimiter, async (req: Request, res: Response) =>
       email,
       password: hashedPassword,
       photo: "",
+      cv: "",
       intentos: MAX_LOGIN_ATTEMPTS,
     });
     await user.save();
@@ -168,6 +189,7 @@ router.post("/me", userIpRateLimiter, async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         photo: user.photo,
+        cv: user.cv,
         age: user.age,
         studies: user.studies,
         links: user.links,
@@ -226,6 +248,7 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         photo: user.photo,
+        cv: user.cv,
         age: user.age,
         studies: user.studies,
         links: user.links,
@@ -278,6 +301,66 @@ router.post("/me/photo", userIpRateLimiter, upload.single("photo"), async (req: 
   }
 });
 
+
+router.post("/me/cv", userIpRateLimiter, uploadCv.single("cv"), async (req: Request, res: Response) => {
+  try {
+    const checkAuth = await getuserJWT(req.cookies.bearer);
+    if (checkAuth == "error") {
+      return res.status(401).json({ error: "Please login again" });
+    }
+    const user = await User.findOne({ username: checkAuth });
+    if (!user) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const file = req.file;
+    if (!file || !file.buffer) {
+      return res.status(400).json({ error: "Missing file" });
+    }
+    if (!CV_MIME.includes(file.mimetype)) {
+      return res.status(400).json({ error: "Invalid file type" });
+    }
+    if (!isValidPdfBuffer(file.buffer)) {
+      return res.status(400).json({ error: "Invalid PDF" });
+    }
+
+    const base64 = Buffer.from(file.buffer).toString("base64");
+    const dataUrl = `data:${file.mimetype};base64,${base64}`;
+    user.cv = dataUrl;
+    await user.save();
+
+    return res.status(200).json({ success: "OK", cv: user.cv });
+  } catch (err: Error | any) {
+    console.error("Upload CV error:", err);
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
+  }
+});
+
+router.delete("/me/cv", userIpRateLimiter, async (req: Request, res: Response) => {
+  try {
+    const checkAuth = await getuserJWT(req.cookies.bearer);
+    if (checkAuth == "error") {
+      return res.status(401).json({ error: "Please login again" });
+    }
+    const user = await User.findOne({ username: checkAuth });
+    if (!user) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    user.cv = "";
+    await user.save();
+    return res.status(200).json({ success: "OK" });
+  } catch (err: Error | any) {
+    console.error("Delete CV error:", err);
+    return res.status(500).json({
+      error: "Internal Server Error",
+      detail: isProd ? undefined : (err?.message || String(err)),
+    });
+  }
+});
+
 router.delete("/me/photo", userIpRateLimiter, async (req: Request, res: Response) => {
   try {
     const checkAuth = await getuserJWT(req.cookies.bearer);
@@ -318,6 +401,7 @@ router.get("/:username", async (req: Request, res: Response) => {
         username: user.username,
         name: user.name,
         photo: user.photo,
+        cv: user.cv,
         age: user.age,
         studies: user.studies,
         links: user.links,

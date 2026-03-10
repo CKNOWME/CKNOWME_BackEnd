@@ -9,6 +9,7 @@ export type Certificate = {
   pdfUrl: string;
   verifyUrl: string;
   photo:string;
+  cv:string;
   category: string;
 };
 
@@ -19,6 +20,42 @@ export type User = {
   email: string;
   password: string;
   photo:string;
+  cv:string;
   certs: string[];
   intentos: number;
+};
+
+export type CredlySkill = { name?: string };
+
+export type CredlyIssuerEntity = {
+  entity?: { name?: string };
+};
+
+export type CredlyIssuer = {
+  summary?: string;
+  entities?: CredlyIssuerEntity[];
+};
+
+export type CredlyBadgeTemplate = {
+  name?: string;
+  description?: string;
+  image_url?: string;
+  skills?: CredlySkill[];
+  url?: string;
+  type_category?: string | null;
+  issuer?: CredlyIssuer;
+};
+
+export type CredlyBadge = {
+  id: string;
+  issued_at_date?: string;
+  expires_at_date?: string | null;
+  public?: boolean;
+  issuer?: CredlyIssuer;
+  badge_template?: CredlyBadgeTemplate;
+  image_url?: string;
+};
+
+export type CredlyResponse = {
+  data?: CredlyBadge[];
 };

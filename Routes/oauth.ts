@@ -42,12 +42,12 @@ router.post("/credly/import", async (req: Request, res: Response) => {
         "Sec-Fetch-Site": "same-origin",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Dest": "empty",
-        "Referer": `https://www.credly.com/users/${username}/badges`,
+        "Referer": `https://www.credly.com/users/${slug}/badges`,
         "Accept-Encoding": "gzip, deflate, br",
         "Priority": "u=1, i",
       },
     });
-
+    console.log(await response.json())
     if (!response.ok) {
       return res.status(502).json({ error: "Credly fetch failed" });
     }

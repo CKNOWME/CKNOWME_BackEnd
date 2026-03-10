@@ -114,6 +114,47 @@ export const apiRateLimiter = rateLimit({
   message: { error: "Too many requests" },
 });
 
+export const authRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests" },
+  keyGenerator: (req: Request) => {
+    const username = typeof req.body?.username === "string" ? req.body.username : "";
+    return `${req.ip}:${username}`;
+  },
+});
+
+export const userIpRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests" },
+  keyGenerator: (req: Request) => {
+    const token = typeof req.cookies?.bearer === "string" ? req.cookies.bearer : "";
+    return `${req.ip}:${token}`;
+  },
+});
+
+export const csrfGuard = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void | Response => {
+  const method = req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    return next();
+  }
+  const cookieToken = req.cookies?.csrf;
+  const headerToken = req.headers["x-csrf-token"] as string | undefined;
+  if (!cookieToken || !headerToken || cookieToken !== headerToken) {
+    return res.status(403).json({ error: "CSRF token invalid" });
+  }
+  return next();
+};
+
 // Global Protection
 export const requestSecurityGuards = (
   req: Request,

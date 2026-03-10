@@ -3,9 +3,12 @@ import dotenv from "dotenv";
 import { JWTPayload, jwtVerify, SignJWT } from "jose";
 
 dotenv.config();
-export const jwtsecret = Deno.env.get("JWT_SECRET");
-const secret = new TextEncoder().encode(jwtsecret);
 
+export const jwtsecret = Deno.env.get("JWT_SECRET");
+if (!jwtsecret) {
+  throw new Error("JWT_SECRET missing");
+}
+const secret = new TextEncoder().encode(jwtsecret);
 
 export async function createJWT(payload: JWTPayload): Promise<string> {
   const jwt = await new SignJWT(payload)
@@ -36,7 +39,7 @@ export const checkAuth = async (
   if (token) {
     const userlegit = await verifyJWT(token);
     if (userlegit != null) {
-      return true;
+      return userlegit.username?.toString() === username;
     }
   }
   return false;

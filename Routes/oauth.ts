@@ -53,7 +53,7 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
     try {
       parsedCerts = parseLinkedInCertifications(fullHtml);
     } catch (_err:Error | unknown) {
-      return res.status(500).json({ error: "Parse error" });
+      return res.status(500).json({ error: "Internal Server Error" });
     }
 
     if (parsedCerts.length == 0) {
@@ -117,7 +117,8 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
       imported: toInsert.length,
       skipped: mapped.length - toInsert.length,
     });
-  } catch (_err:Error | unknown) {
+  } catch (err:Error | unknown) {
+    console.log(err)
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });

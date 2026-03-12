@@ -63,9 +63,9 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
     const mapped = parsedCerts
       .filter((cert) => cert.name && cert.company)
       .map((cert) => {
-        const verifyUrl = cert.url || "";
-        const pdfUrl = "";
-        const photo = cert.image || "";
+        const verifyUrl = cert.url || "null";
+        const pdfUrl = cert.url || "null";
+        const photo = cert.image || "null";
         const date = cert.issuedAt || Date.now();
         const expiresAt = cert.expiresAt || undefined;
         return {
@@ -74,7 +74,7 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
             id: crypto.randomUUID(),
             title: cert.name,
             issuer: cert.company,
-            description: "",
+            description: cert.name,
             date,
             pdfUrl,
             verifyUrl,

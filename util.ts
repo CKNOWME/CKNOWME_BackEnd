@@ -1,4 +1,3 @@
-// deno-lint-ignore-file
 import { CredlyBadge, CredlySkill,LinkedInCertification } from "./types.ts";
 import { getuserJWT } from "./auth.ts";
 import { Request } from "express";
@@ -233,15 +232,12 @@ const parseLinkedInDates = (dates: string | null): { issuedAt: number | null; ex
   return { issuedAt, expiresAt };
 };
 function parseCertification(el: Element): LinkedInCertification {
-  // Name
   const nameEl = el.querySelector(".t-bold span[aria-hidden='true']");
   const name = nameEl?.textContent?.trim() ?? null;
 
-  // Company
   const companySpans = el.querySelectorAll(".t-14.t-normal span[aria-hidden='true']");
   const company = companySpans[0]?.textContent?.trim() ?? null;
 
-  // Dates & Credential ID
   const metaSpans = el.querySelectorAll(
     ".t-14.t-normal.t-black--light span[aria-hidden='true']"
   );
@@ -259,7 +255,6 @@ function parseCertification(el: Element): LinkedInCertification {
     }
   }
 
-  // URL
   const links = Array.from(el.querySelectorAll("a[href]"));
   const hrefs = links
     .map((link) => link.getAttribute("href"))
@@ -269,7 +264,6 @@ function parseCertification(el: Element): LinkedInCertification {
     !href.includes("lnkd.in/")
   ) ?? null;
 
-  // Image
   const imgEl =
     el.querySelector(".pvs-thumbnail__image") ||
     el.querySelector(".pvs-entity__image img");

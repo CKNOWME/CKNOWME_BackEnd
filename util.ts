@@ -1,12 +1,67 @@
-import { CredlyBadge, CredlySkill } from "./types.ts";
+// deno-lint-ignore-file
+import { CredlyBadge, CredlySkill,LinkedInCertification } from "./types.ts";
 import { getuserJWT } from "./auth.ts";
 import { Request } from "express";
+import { DOMParser, Element } from "https://deno.land/x/deno_dom@v0.1.49/deno-dom-wasm.ts";
+import multer from "multer";
 
-export const parseDate = (value?: string | null): number | null => {
-  if (!value) return null;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? null : parsed;
+
+
+export const MAX_LOGIN_ATTEMPTS = 5;
+export const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB
+export const MAX_CV_SIZE = 4 * 1024 * 1024; // 4MB
+export const ALLOWED_MIME = ["image/png", "image/jpeg", "image/jpg"];
+export const CV_MIME = ["application/pdf"];
+
+export const buildAuthCookie = (token: string): string => {
+  return `bearer=${token}; Path=/; SameSite=Lax; Max-Age=3600; HttpOnly; Secure`;
 };
+export const clearAuthCookie = (): string => {
+  return `bearer=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly; Secure`;
+};
+export const buildCsrfCookie = (token: string): string => {
+  return `csrf=${token}; Path=/; SameSite=Lax; Max-Age=3600; Secure`;
+};
+export const isEmailValid = (email: string): boolean => {
+  return email.includes("@") && email.includes(".");
+};
+export const isValidImageBuffer = (buffer: Uint8Array, mime: string): boolean => {
+  if (mime === "image/png") {
+    return buffer.length >= 8 &&
+      buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+      buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a;
+  }
+  if (mime === "image/jpeg" || mime === "image/jpg") {
+    return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  return false;
+};
+export const isValidPdfBuffer = (buffer: Uint8Array): boolean => {
+  return buffer.length >= 4 && buffer[0] == 0x25 && buffer[1] == 0x50 && buffer[2] == 0x44 && buffer[3] == 0x46;
+};
+export const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PHOTO_SIZE },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (!ALLOWED_MIME.includes(file.mimetype)) {
+      return cb(new Error("Invalid file type"));
+    }
+    cb(null, true);
+  },
+});
+export const uploadCv = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_CV_SIZE },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (!CV_MIME.includes(file.mimetype)) {
+      return cb(new Error("Invalid file type"));
+    }
+    cb(null, true);
+  },
+});
+
+
+
 
 export const PRIVATE_IPS = [
   /^127\./,
@@ -23,7 +78,6 @@ export const isPrivateHost = (hostname: string): boolean => {
   return PRIVATE_IPS.some((rule) => rule.test(hostname)) ||
     PRIVATE_IP_RANGES.some((rule) => rule.test(hostname));
 };
-
 export const validatePublicUrl = (rawUrl: string): boolean => {
   try {
     const parsed = new URL(rawUrl);
@@ -36,7 +90,6 @@ export const validatePublicUrl = (rawUrl: string): boolean => {
     return false;
   }
 };
-
 export const ensureSafeUrls = (urls: string[]): boolean => {
   for (const url of urls) {
     if (!url) continue;
@@ -44,7 +97,11 @@ export const ensureSafeUrls = (urls: string[]): boolean => {
   }
   return true;
 };
-
+export const parseDate = (value?: string | null): number | null => {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
 export const resolveAuthUser = async (req: Request): Promise<string | null> => {
   const jwt = req.cookies?.bearer;
   if (!jwt) return null;
@@ -52,6 +109,20 @@ export const resolveAuthUser = async (req: Request): Promise<string | null> => {
   if (username === "error") return null;
   return username;
 };
+export const normalizeOptionalUrl = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed;
+};
+export const normalizeHash = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const cleaned = value.trim().toLowerCase();
+  if (!cleaned) return "";
+  if (!/^[a-f0-9]{64}$/.test(cleaned)) return "";
+  return cleaned;
+};
+
 
 export const extractCredlySlug = (rawUrl: string): string | null => {
   try {
@@ -70,11 +141,9 @@ export const extractCredlySlug = (rawUrl: string): string | null => {
   }
   return null
 };
-
 export const badgeEndpointFor = (slug: string): string => {
   return `https://www.credly.com/users/${slug}`;
 };
-
 export const getCredlyBadges = async (id:string):Promise<CredlyBadge[] | null>=>{
   const url = `https://www.credly.com/users/${id}/badges`;
   const res = await fetch(url, {
@@ -104,7 +173,6 @@ export const getCredlyBadges = async (id:string):Promise<CredlyBadge[] | null>=>
   const data = JSON.parse(text);
   return data.data;
 }
-
 export const normalizeTags = (skills?: CredlySkill[]): string[] => {
   if (!skills) return [];
   return skills
@@ -112,7 +180,6 @@ export const normalizeTags = (skills?: CredlySkill[]): string[] => {
     .filter(Boolean)
     .slice(0, 12);
 };
-
 export const issuerFrom = (badge: CredlyBadge): string => {
   const templateIssuer = badge.badge_template?.issuer?.entities?.[0]?.entity
     ?.name;
@@ -126,20 +193,7 @@ export const issuerFrom = (badge: CredlyBadge): string => {
   return summary || "Credly";
 };
 
-
-
-
-export type LinkedInCert = {
-  title: string;
-  issuer: string;
-  issuedAt?: number;
-  expiresAt?: number;
-  credentialId?: string;
-  verifyUrl?: string;
-  photo?: string;
-};
-
-const MONTHS_ES: Record<string, number> = {
+const MONTHS: Record<string, number> = {
   ene: 0,
   feb: 1,
   mar: 2,
@@ -148,160 +202,94 @@ const MONTHS_ES: Record<string, number> = {
   jun: 5,
   jul: 6,
   ago: 7,
-  sept: 8,
   sep: 8,
+  sept: 8,
   oct: 9,
   nov: 10,
   dic: 11,
+  jan: 0,
+  apr: 3,
+  aug: 7,
+  dec: 11,
 };
-
-const parseEsMonthYear = (value: string): number | undefined => {
-  const match = value.toLowerCase().match(/(ene|feb|mar|abr|may|jun|jul|ago|sept|sep|oct|nov|dic)\.?\s+(\d{4})/i);
-  if (!match) return undefined;
-  const month = MONTHS_ES[match[1].replace('.', '')];
+const parseMonthYear = (value: string): number | null => {
+  const match = value.toLowerCase().match(
+    /(ene|feb|mar|abr|may|jun|jul|ago|sep|sept|oct|nov|dic|jan|apr|aug|dec)\.?\s+(\d{4})/i,
+  );
+  if (!match) return null;
+  const key = match[1].replace(".", "");
+  const month = MONTHS[key];
+  if (month === undefined) return null;
   const year = parseInt(match[2], 10);
-  if (month === undefined) return undefined;
+  if (Number.isNaN(year)) return null;
   return Date.UTC(year, month, 1);
 };
+const parseLinkedInDates = (dates: string | null): { issuedAt: number | null; expiresAt: number | null } => {
+  if (!dates) return { issuedAt: null, expiresAt: null };
+  const issuedMatch = dates.match(/Expedici[oó]n\s+([^·]+)/i) || dates.match(/Issued\s+([^·]+)/i);
+  const expiresMatch = dates.match(/Vencimiento:?\s*([^·]+)/i) || dates.match(/Expiration:?\s*([^·]+)/i);
+  const issuedAt = issuedMatch ? parseMonthYear(issuedMatch[1].trim()) : null;
+  const expiresAt = expiresMatch ? parseMonthYear(expiresMatch[1].trim()) : null;
+  return { issuedAt, expiresAt };
+};
+function parseCertification(el: Element): LinkedInCertification {
+  // Name
+  const nameEl = el.querySelector(".t-bold span[aria-hidden='true']");
+  const name = nameEl?.textContent?.trim() ?? null;
 
-export const parseLinkedinCerts = (payload: any): LinkedInCert[] => {
-  const included = Array.isArray(payload?.included) ? payload.included : [];
-  const list = included.find((item: any) =>
-    typeof item?.entityUrn === "string" && item.entityUrn.includes("LICENSES_AND_CERTIFICATIONS_VIEW_DETAILS")
+  // Company
+  const companySpans = el.querySelectorAll(".t-14.t-normal span[aria-hidden='true']");
+  const company = companySpans[0]?.textContent?.trim() ?? null;
+
+  // Dates & Credential ID
+  const metaSpans = el.querySelectorAll(
+    ".t-14.t-normal.t-black--light span[aria-hidden='true']"
   );
-  const elements = Array.isArray(list?.components?.elements)
-    ? list.components.elements
-    : Array.isArray(list?.components?.elements?.elements)
-    ? list.components.elements.elements
-    : [];
+  let dates: string | null = null;
+  let credentialId: string | null = null;
 
-  const findVectorImage = (node: any): { rootUrl: string; artifacts: any[] } | null => {
-    if (!node) return null;
-    if (node.vectorImage?.rootUrl && Array.isArray(node.vectorImage?.artifacts)) {
-      return { rootUrl: node.vectorImage.rootUrl, artifacts: node.vectorImage.artifacts };
-    }
-    if (node.rootUrl && Array.isArray(node.artifacts)) {
-      return { rootUrl: node.rootUrl, artifacts: node.artifacts };
-    }
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const found = findVectorImage(item);
-        if (found) return found;
-      }
-    } else if (typeof node === "object") {
-      for (const value of Object.values(node)) {
-        const found = findVectorImage(value);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
+  for (const span of metaSpans) {
+    const text = span.textContent?.trim();
+    if (!text) continue;
 
-  const getImageUrl = (node: any): string | undefined => {
-    const vec = findVectorImage(node);
-    if (!vec) return undefined;
-    const best = vec.artifacts.reduce((acc: any, cur: any) => {
-      if (!acc) return cur;
-      return (cur.width || 0) > (acc.width || 0) ? cur : acc;
-    }, null);
-    if (!best?.fileIdentifyingUrlPathSegment || !vec.rootUrl) return undefined;
-    return `${vec.rootUrl}${best.fileIdentifyingUrlPathSegment}`;
-  };
-
-  const parseCaption = (caption?: string): { issuedAt?: number; expiresAt?: number } => {
-    if (!caption) return {};
-    const issued = caption.match(/Expedici[oó]n\s+([^·]+)/i);
-    const expires = caption.match(/Vencimiento:?\s*([^·]+)/i);
-    const issuedAt = issued ? parseEsMonthYear(issued[1].trim()) : undefined;
-    const expiresAt = expires ? parseEsMonthYear(expires[1].trim()) : undefined;
-    return { issuedAt, expiresAt };
-  };
-
-  const certs: LinkedInCert[] = [];
-  for (const element of elements) {
-    const entity = element?.components?.entityComponent;
-    if (!entity) continue;
-
-    const title = entity?.titleV2?.text?.text || entity?.title?.text?.text || "";
-    const issuer = entity?.subtitle?.text?.text || entity?.subtitleV2?.text?.text || "";
-    if (!title || !issuer) continue;
-
-    const caption = entity?.caption?.text?.text;
-    const { issuedAt, expiresAt } = parseCaption(caption);
-
-    const credentialId = entity?.metadata?.text?.text
-      ?.replace(/ID de la credencial\s*/i, "").trim();
-    const verifyUrl = entity?.textActionTarget || entity?.actionTarget;
-
-    const photo = getImageUrl(element) || getImageUrl(entity);
-
-    certs.push({
-      title,
-      issuer,
-      issuedAt,
-      expiresAt,
-      credentialId,
-      verifyUrl,
-      photo,
-    });
-  }
-
-  return certs;
-};
-
-
-const decodeHtmlEntities = (input: string): string => {
-  return input
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(parseInt(code, 10)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_m, code) => String.fromCharCode(parseInt(code, 16)));
-};
-
-const stripHtml = (input: string): string => {
-  return decodeHtmlEntities(input.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
-};
-
-export const parseLinkedinHtmlList = (html: string): LinkedInCert[] => {
-  const blocks = Array.from(html.matchAll(/<li class="pvs-list__paged-list-item[\s\S]*?<\/li>/g));
-  const certs: LinkedInCert[] = [];
-
-  for (const match of blocks) {
-    const block = match[0];
-    const titleMatch = block.match(/<span[^>]*aria-hidden="true"[^>]*>(.*?)<\/span>/);
-    const title = titleMatch ? stripHtml(titleMatch[1]) : '';
-
-    const issuerMatch = block.match(/<span[^>]*class="[^"]*t-14[^"]*"[^>]*>\s*<span[^>]*aria-hidden="true"[^>]*>(.*?)<\/span>/);
-    const issuer = issuerMatch ? stripHtml(issuerMatch[1]) : '';
-
-    const dateMatch = block.match(/Expedici[^<]*/i);
-    const dateLine = dateMatch ? stripHtml(dateMatch[0]) : '';
-    const issued = dateLine.match(/Expedici[oó]n\s+([^·]+)/i);
-    const exp = dateLine.match(/Vencimiento:?\s*([^·]+)/i);
-    const issuedAt = issued ? parseEsMonthYear(issued[1].trim()) : undefined;
-    const expiresAt = exp ? parseEsMonthYear(exp[1].trim()) : undefined;
-
-    const idMatch = block.match(/ID de la credencial[^<]*/i);
-    const credentialId = idMatch ? stripHtml(idMatch[0]).replace(/^ID de la credencial\s*/i, '') : undefined;
-
-    const hrefs = Array.from(block.matchAll(/href="(https?:\/\/[^"]+)"/g)).map((m) => decodeHtmlEntities(m[1]));
-    const verifyUrl = hrefs.find((h) => !h.includes('linkedin.com/company') && !h.includes('linkedin.com/in/'));
-
-    const imgMatch = block.match(/<img[^>]*src="(https?:\/\/[^"]+)"[^>]*>/);
-    const photo = imgMatch ? decodeHtmlEntities(imgMatch[1]) : undefined;
-
-    if (title && issuer) {
-      certs.push({ title, issuer, issuedAt, expiresAt, credentialId, verifyUrl, photo });
+    if (/ID de la credencial|credential ID/i.test(text) || /^\d+$/.test(text)) {
+      credentialId = text.replace(/^ID de la credencial\s*/i, "").trim();
+    } else {
+      dates = text;
     }
   }
 
-  return certs;
-};
+  // URL
+  const links = Array.from(el.querySelectorAll("a[href]"));
+  const hrefs = links
+    .map((link) => link.getAttribute("href"))
+    .filter((href): href is string => Boolean(href && href.startsWith("http")));
+  const url = hrefs.find((href) =>
+    !href.includes("linkedin.com/") &&
+    !href.includes("lnkd.in/")
+  ) ?? null;
 
-export const parseLinkedBadges = (payload: any): LinkedInCert[] => {
-  return parseLinkedinCerts(payload);
-};
+  // Image
+  const imgEl =
+    el.querySelector(".pvs-thumbnail__image") ||
+    el.querySelector(".pvs-entity__image img");
+  const image = imgEl?.getAttribute("src") ?? null;
+
+  const { issuedAt, expiresAt } = parseLinkedInDates(dates);
+
+  return { name, company, dates, issuedAt, expiresAt, credentialId, url, image };
+}
+export function parseLinkedInCertifications(html: string): LinkedInCertification[] {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  if (!doc) return [];
+
+  const certElements = doc.querySelectorAll(
+    '[data-view-name="profile-component-entity"]'
+  );
+
+  return Array.from(certElements).map((el) => parseCertification(el));
+}
+
+
+
 

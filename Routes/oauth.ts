@@ -13,7 +13,7 @@ import {
   normalizeTags,
   ensureSafeUrls,
   getCredlyBadges,
-  parseLinkedinHtmlList,
+  parseLinkedInCertifications,
 } from "../util.ts";
 
 const router = express.Router();
@@ -43,46 +43,37 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
 
     const file = req.file;
     if (!file || !file.buffer) {
-      return res.status(400).json({ error: "Missing file" });
+      return res.status(400).json({ error: "Missing html" });
     }
-    console.log("LinkedIn HTML import:", file.originalname, file.mimetype, file.size);
-
-    const html = file.buffer.toString("utf-8");
-    console.log("LinkedIn HTML size:", html.length);
-    console.log("LinkedIn HTML head:", html.slice(0, 400));
-    if (html.length < 200) {
-      return res.status(400).json({ error: "Empty HTML" });
+    const fullHtml = file.buffer.toString("utf-8");
+    if (!fullHtml || fullHtml.length < 200) {
+      return res.status(400).json({ error: "Empty html" });
     }
-
-    let parsed = [] as any[];
+    let parsedCerts = [];
     try {
-      parsed = parseLinkedinHtmlList(html);
-      console.log("LinkedIn parsed certs:", parsed.length);
-      if (parsed.length > 0) {
-        console.log("LinkedIn sample:", parsed[0]);
-      }
-    } catch (err) {
-      console.error("LinkedIn parse error:", err);
+      parsedCerts = parseLinkedInCertifications(fullHtml);
+    } catch (_err:Error | unknown) {
       return res.status(500).json({ error: "Parse error" });
     }
 
-    if (parsed.length == 0) {
+    if (parsedCerts.length == 0) {
       return res.status(200).json({ success: "OK", imported: 0, skipped: 0 });
     }
 
-    const mapped = parsed
+    const mapped = parsedCerts
+      .filter((cert) => cert.name && cert.company)
       .map((cert) => {
-        const verifyUrl = cert.verifyUrl || "";
+        const verifyUrl = cert.url || "";
         const pdfUrl = "";
-        const photo = cert.photo || "";
+        const photo = cert.image || "";
         const date = cert.issuedAt || Date.now();
         const expiresAt = cert.expiresAt || undefined;
         return {
           verifyUrl,
           data: {
             id: crypto.randomUUID(),
-            title: cert.title,
-            issuer: cert.issuer,
+            title: cert.name,
+            issuer: cert.company,
             description: "",
             date,
             pdfUrl,
@@ -99,7 +90,7 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
       .filter((item) => ensureSafeUrls([item.verifyUrl, item.data.photo]));
 
     if (mapped.length == 0) {
-      return res.status(200).json({ success: "OK", imported: 0, skipped: parsed.length });
+      return res.status(200).json({ success: "OK", imported: 0, skipped: parsedCerts.length });
     }
 
     const verifyUrls = mapped.map((m) => m.verifyUrl).filter(Boolean);
@@ -126,8 +117,7 @@ router.post("/linkedin/import-html", uploadLinkedinHtml.single("html"), async (r
       imported: toInsert.length,
       skipped: mapped.length - toInsert.length,
     });
-  } catch (err) {
-    console.error("LinkedIn import error:", err);
+  } catch (_err:Error | unknown) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });

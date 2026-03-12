@@ -60,3 +60,13 @@ export type CredlyResponse = {
   data?: CredlyBadge[];
 };
 
+export type LinkedInCertification ={
+  name: string | null;
+  company: string | null;
+  dates: string | null;
+  issuedAt: number | null;
+  expiresAt: number | null;
+  credentialId: string | null;
+  url: string | null;
+  image: string | null;
+}

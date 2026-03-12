@@ -3,91 +3,11 @@ import { Cert } from "../DB/cert.ts";
 import { User } from "../DB/user.ts";
 import { getuserJWT } from "../auth.ts";
 import { userIpRateLimiter } from "../security.ts";
-
+import {resolveAuthUser,normalizeTags,normalizeOptionalUrl,ensureSafeUrls,parseDate,normalizeHash} from "../util.ts"
 const router = express.Router();
 
 router.use(userIpRateLimiter);
 
-const parseDate = (value: unknown): number | null => {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-  return null;
-};
-
-const PRIVATE_IPS = [
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^169\.254\./,
-  /^0\./,
-  /^::1$/,
-  /^localhost$/i,
-];
-const PRIVATE_IP_RANGES = [/^172\.(1[6-9]|2\d|3[0-1])\./];
-
-const isPrivateHost = (hostname: string): boolean => {
-  return PRIVATE_IPS.some((rule) => rule.test(hostname)) ||
-    PRIVATE_IP_RANGES.some((rule) => rule.test(hostname));
-};
-
-const validatePublicUrl = (rawUrl: string): boolean => {
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
-    if (isPrivateHost(parsed.hostname)) return false;
-    if (parsed.hostname.endsWith(".local")) return false;
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const normalizeOptionalUrl = (value: unknown): string => {
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  return trimmed;
-};
-
-const ensureSafeUrls = (urls: string[]): boolean => {
-  for (const url of urls) {
-    if (!url) continue;
-    if (!validatePublicUrl(url)) return false;
-  }
-  return true;
-};
-
-const normalizeTags = (value: unknown): string[] => {
-  if (Array.isArray(value)) {
-    return value
-      .map((v) => (typeof v === "string" ? v.trim() : ""))
-      .filter((v) => v.length > 0)
-      .slice(0, 12);
-  }
-  if (typeof value === "string") {
-    return value.split(",").map((v) => v.trim()).filter(Boolean).slice(0, 12);
-  }
-  return [];
-};
-
-const normalizeHash = (value: unknown): string => {
-  if (typeof value !== "string") return "";
-  const cleaned = value.trim().toLowerCase();
-  if (!cleaned) return "";
-  if (!/^[a-f0-9]{64}$/.test(cleaned)) return "";
-  return cleaned;
-};
-
-const resolveAuthUser = async (req: Request): Promise<string | null> => {
-  const jwt = req.cookies?.bearer;
-  if (!jwt) return null;
-  const username = await getuserJWT(jwt);
-  if (username === "error") return null;
-  return username;
-};
 
 router.post("/add", async (req: Request, res: Response) => {
   try {

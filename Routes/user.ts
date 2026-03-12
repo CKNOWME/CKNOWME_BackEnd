@@ -1,77 +1,12 @@
 import express, { Request, Response } from "express";
 import bcrypt from "bcryptjs";
-import multer from "multer";
 import { User } from "../DB/user.ts";
 import { Cert } from "../DB/cert.ts";
 import { createJWT, getuserJWT } from "../auth.ts";
 import { authRateLimiter, userIpRateLimiter } from "../security.ts";
 import { Buffer } from "node:buffer";
-
+import { upload,uploadCv,isEmailValid,buildCsrfCookie,ALLOWED_MIME,clearAuthCookie,CV_MIME,isValidPdfBuffer,isValidImageBuffer,MAX_LOGIN_ATTEMPTS,buildAuthCookie} from "../util.ts";
 const router = express.Router();
-
-const MAX_LOGIN_ATTEMPTS = 5;
-const MAX_PHOTO_SIZE = 2 * 1024 * 1024; // 2MB
-const MAX_CV_SIZE = 4 * 1024 * 1024; // 4MB
-const ALLOWED_MIME = ["image/png", "image/jpeg", "image/jpg"];
-const CV_MIME = ["application/pdf"];
-const isProd = Deno.env.get("NODE_ENV") === "production";
-
-const buildAuthCookie = (token: string): string => {
-  const secure = isProd ? "; Secure" : "";
-  return `bearer=${token}; Path=/; SameSite=Lax; Max-Age=3600; HttpOnly${secure}`;
-};
-const clearAuthCookie = (): string => {
-  const secure = isProd ? "; Secure" : "";
-  return `bearer=; Path=/; SameSite=Lax; Max-Age=0; HttpOnly${secure}`;
-};
-const buildCsrfCookie = (token: string): string => {
-  const secure = isProd ? "; Secure" : "";
-  return `csrf=${token}; Path=/; SameSite=Lax; Max-Age=3600${secure}`;
-};
-
-const isEmailValid = (email: string): boolean => {
-  return email.includes("@") && email.includes(".");
-};
-
-const isValidImageBuffer = (buffer: Uint8Array, mime: string): boolean => {
-  if (mime === "image/png") {
-    return buffer.length >= 8 &&
-      buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
-      buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a;
-  }
-  if (mime === "image/jpeg" || mime === "image/jpg") {
-    return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-  }
-  return false;
-};
-
-
-const isValidPdfBuffer = (buffer: Uint8Array): boolean => {
-  return buffer.length >= 4 && buffer[0] == 0x25 && buffer[1] == 0x50 && buffer[2] == 0x44 && buffer[3] == 0x46;
-};
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PHOTO_SIZE },
-  fileFilter: (_req: any, file: any, cb: any) => {
-    if (!ALLOWED_MIME.includes(file.mimetype)) {
-      return cb(new Error("Invalid file type"));
-    }
-    cb(null, true);
-  },
-});
-
-
-const uploadCv = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_CV_SIZE },
-  fileFilter: (_req: any, file: any, cb: any) => {
-    if (!CV_MIME.includes(file.mimetype)) {
-      return cb(new Error("Invalid file type"));
-    }
-    cb(null, true);
-  },
-});
 
 
 router.get("/csrf", (_req: Request, res: Response) => {
@@ -123,7 +58,7 @@ router.post("/register", authRateLimiter, async (req: Request, res: Response) =>
     }
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
@@ -159,7 +94,7 @@ router.post("/login", authRateLimiter, async (req: Request, res: Response) => {
   } catch (err: Error | any) {
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
@@ -197,7 +132,7 @@ router.post("/me", userIpRateLimiter, async (req: Request, res: Response) => {
   } catch (err: Error | any) {
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
@@ -255,7 +190,7 @@ router.put("/me", userIpRateLimiter, async (req: Request, res: Response) => {
   } catch (err: Error | any) {
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
@@ -291,11 +226,10 @@ router.post("/me/photo", userIpRateLimiter, upload.single("photo"), async (req: 
   } catch (err: Error | any) {
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
-
 
 router.post("/me/cv", userIpRateLimiter, uploadCv.single("cv"), async (req: Request, res: Response) => {
   try {
@@ -328,7 +262,7 @@ router.post("/me/cv", userIpRateLimiter, uploadCv.single("cv"), async (req: Requ
   } catch (err: Error | any) {
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
@@ -349,7 +283,7 @@ router.delete("/me/cv", userIpRateLimiter, async (req: Request, res: Response) =
   } catch (err: Error | any) {
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
@@ -370,7 +304,7 @@ router.delete("/me/photo", userIpRateLimiter, async (req: Request, res: Response
   } catch (err: Error | any) {
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
@@ -403,7 +337,7 @@ router.get("/:username", async (req: Request, res: Response) => {
   } catch (err: Error | any) {
     return res.status(500).json({
       error: "Internal Server Error",
-      detail: isProd ? undefined : (err?.message || String(err)),
+      
     });
   }
 });
